@@ -9,7 +9,7 @@ async function startServer() {
     // Connect to MongoDB Atlas (replaces MySQL testConnection)
     await connectDB();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🩸 LifeLink API running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`Health check: http://localhost:${PORT}/api/health`);

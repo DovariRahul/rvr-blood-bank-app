@@ -225,12 +225,15 @@ const updateFcmToken = asyncHandler(async (req, res) => {
  * Update user's basic profile (fullName, phone, bloodGroup).
  */
 const updateProfile = asyncHandler(async (req, res) => {
-  const { full_name, phone, blood_group } = req.body;
+  const { full_name, fullName, phone, blood_group, bloodGroup } = req.body;
 
   const updates = {};
-  if (full_name !== undefined) updates.fullName = full_name;
+  const nameToUse = full_name !== undefined ? full_name : fullName;
+  const bloodGroupToUse = blood_group !== undefined ? blood_group : bloodGroup;
+
+  if (nameToUse !== undefined) updates.fullName = nameToUse;
   if (phone !== undefined) updates.phone = formatPhoneE164(phone);
-  if (blood_group !== undefined) updates.bloodGroup = blood_group;
+  if (bloodGroupToUse !== undefined) updates.bloodGroup = bloodGroupToUse;
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({

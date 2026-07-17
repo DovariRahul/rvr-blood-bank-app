@@ -176,7 +176,8 @@ const updateDonor = asyncHandler(async (req, res) => {
   if (!donor) throw new NotFoundError('Donor');
 
   // Access control: own profile or admin
-  if (req.user.role !== 'admin' && donor.userId.toString() !== req.user._id.toString()) {
+  const donorUserId = donor.userId._id ? donor.userId._id.toString() : donor.userId.toString();
+  if (req.user.role !== 'admin' && donorUserId !== req.user._id.toString()) {
     throw new ForbiddenError('You can only edit your own profile.');
   }
 
@@ -230,7 +231,8 @@ const toggleAvailability = asyncHandler(async (req, res) => {
   const donor = await Donor.findById(id);
   if (!donor) throw new NotFoundError('Donor');
 
-  if (req.user.role !== 'admin' && donor.userId.toString() !== req.user._id.toString()) {
+  const donorUserId = donor.userId._id ? donor.userId._id.toString() : donor.userId.toString();
+  if (req.user.role !== 'admin' && donorUserId !== req.user._id.toString()) {
     throw new ForbiddenError('You can only update your own availability.');
   }
 

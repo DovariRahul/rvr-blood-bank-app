@@ -68,6 +68,13 @@ const profileUpdateValidator = [
     .withMessage('Full name must be 2–100 characters.')
     .matches(/^[a-zA-Z\s.]+$/)
     .withMessage('Name can only contain letters, spaces, and dots.'),
+  body('fullName')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Full name must be 2–100 characters.')
+    .matches(/^[a-zA-Z\s.]+$/)
+    .withMessage('Name can only contain letters, spaces, and dots.'),
   body('phone')
     .optional({ values: 'falsy' })
     .customSanitizer((val) => {
@@ -81,6 +88,10 @@ const profileUpdateValidator = [
     .matches(/^\+91[6-9]\d{9}$/)
     .withMessage('Enter a valid 10-digit Indian mobile number.'),
   body('blood_group')
+    .optional({ values: 'falsy' })
+    .isIn(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
+    .withMessage('Select a valid blood group.'),
+  body('bloodGroup')
     .optional({ values: 'falsy' })
     .isIn(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
     .withMessage('Select a valid blood group.'),
