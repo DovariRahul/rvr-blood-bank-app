@@ -1,7 +1,32 @@
 const { admin, getFirebaseInitStatus } = require('../config/firebase');
 const NotificationLog = require('../models/NotificationLog');
+const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { logger } = require('../utils/logger');
+
+/**
+ * Create an in-app notification DB record (the inbox entry shown in the
+ * Notifications tab). Call this alongside every FCM push so both the
+ * device banner and the in-app inbox are always in sync.
+ *
+ * @param {string|ObjectId} userId     - Recipient's User._id
+ * @param {string}          type       - Notification.type enum value
+ * @param {string}          message    - Human-readable notification body
+ * @param {string|ObjectId} [requestId] - Related BloodRequest._id (optional)
+ */
+async function createInAppNotification(userId, type, message, requestId = null) {
+  try {
+    await Notification.create({
+      recipientId: userId,
+      requestId: requestId || null,
+      type,
+      message,
+    });
+  } catch (err) {
+    // Non-fatal — log but don't throw so the push still completes
+    logger.error(`Failed to create in-app notification for user ${userId}:`, err.message);
+  }
+}
 
 /**
  * Log notification to database.
@@ -40,11 +65,15 @@ async function sendPushNotification(user, title, body, data = {}) {
 
   const message = {
     notification: { title, body },
-    data: {
-      ...Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)])
-      ),
-      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    data: Object.fromEntries(
+      Object.entries(data).map(([k, v]) => [k, String(v)])
+    ),
+    // Required by FCM HTTP v1 to route to the correct channel on Android 8+.
+    // Without channelId the notification is silently dropped on modern Android.
+    android: {
+      notification: {
+        channelId: 'default',
+      },
     },
     token: user.fcmToken,
   };
@@ -74,6 +103,7 @@ async function sendPushNotification(user, title, body, data = {}) {
 /**
  * Notify a donor about a new blood request match.
  * Preserved from original server.
+ * Also creates an in-app notification record so FCM push and inbox are always in sync.
  */
 async function sendDonorNotification(donor, request) {
   const urgencyLabel = request.urgency.toUpperCase();
@@ -91,7 +121,15 @@ async function sendDonorNotification(donor, request) {
     ? donor.userId
     : { _id: donor.userId, fcmToken: donor.fcmToken, fullName: donor.fullName };
 
-  return await sendPushNotification(userObj, title, body, data);
+  const sent = await sendPushNotification(userObj, title, body, data);
+
+  // ── Always create the in-app notification record ──────────────────────────
+  // This guarantees the Notifications tab always shows the request,
+  // even if FCM delivery fails or the device is offline.
+  const recipientId = userObj._id || userObj.id;
+  await createInAppNotification(recipientId, 'blood_request', body, request._id || request.id);
+
+  return sent;
 }
 
 /**
@@ -130,6 +168,7 @@ async function sendSeekerNotification(request, donor) {
 }
 
 module.exports = {
+  createInAppNotification,
   sendPushNotification,
   sendDonorNotification,
   sendAcceptanceConfirmation,

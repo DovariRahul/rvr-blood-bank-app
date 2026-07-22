@@ -21,7 +21,7 @@ function initFirebase() {
       // Load from file path
       const serviceAccount = require(resolvedPath);
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential: admin.cert(serviceAccount),
       });
       isFirebaseInitialized = true;
       logger.info('Firebase Admin initialized successfully from service account file.');
@@ -29,7 +29,7 @@ function initFirebase() {
       // Fallback: load from JSON string in env (original approach)
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential: admin.cert(serviceAccount),
       });
       isFirebaseInitialized = true;
       logger.info('Firebase Admin initialized successfully from env variable.');
@@ -37,7 +37,7 @@ function initFirebase() {
       logger.warn('Firebase service account not configured. FCM notifications will be simulated.');
     }
   } catch (error) {
-    logger.error('Failed to initialize Firebase Admin:', error.message);
+    logger.error(`Failed to initialize Firebase Admin: ${error.message}`);
   }
 
   return isFirebaseInitialized;

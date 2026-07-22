@@ -5,7 +5,7 @@ const DonorResponse = require('../models/DonorResponse');
 const BloodRequest = require('../models/BloodRequest');
 const { asyncHandler, formatPhoneE164, calculateAge, daysSince } = require('../utils/helpers');
 const { ConflictError, NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
-const { sendAcceptanceConfirmation, sendSeekerNotification } = require('../services/fcm.service');
+const { sendAcceptanceConfirmation, sendSeekerNotification, createInAppNotification } = require('../services/fcm.service');
 const { logger } = require('../utils/logger');
 
 /**
@@ -296,10 +296,30 @@ const respondToRequest = asyncHandler(async (req, res) => {
     // Send confirmations asynchronously
     setImmediate(async () => {
       try {
+        const donorName = donor.userId?.fullName || donor.fullName || 'A donor';
+
+        // ── FCM push to donor: thank-you banner ──────────────────────────────
         await sendAcceptanceConfirmation(donor, request);
+        // ── In-app record for donor inbox ────────────────────────────────────
+        const donorUserId = donor.userId?._id || donor.userId;
+        await createInAppNotification(
+          donorUserId,
+          'donor_accepted',
+          `Thank you for accepting! Please proceed to ${request.hospitalName}. Contact: ${request.contactName} at ${request.contactPhone}.`,
+          request._id
+        );
+
+        // ── FCM push to requester: donor found ───────────────────────────────
         await sendSeekerNotification(request, donor);
+        // ── In-app record for requester inbox ────────────────────────────────
+        await createInAppNotification(
+          request.requesterId,
+          'donor_accepted',
+          `Great news! ${donorName} (${donor.bloodGroup}) has accepted your blood request and is on their way to ${request.hospitalName}.`,
+          request._id
+        );
       } catch (err) {
-        logger.error('Failed to send confirmation:', err.message);
+        logger.error('Failed to send confirmation notifications:', err.message);
       }
     });
   }

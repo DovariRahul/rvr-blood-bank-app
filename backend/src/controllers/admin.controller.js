@@ -6,6 +6,8 @@ const AuditLog = require('../models/AuditLog');
 const Notification = require('../models/Notification');
 const { asyncHandler } = require('../utils/helpers');
 const { NotFoundError, AppError } = require('../utils/errors');
+const { sendPushNotification, sendDonorNotification } = require('../services/fcm.service');
+const { findMatchingDonors } = require('../services/matching.service');
 const { logger } = require('../utils/logger');
 
 /**
@@ -163,17 +165,82 @@ const verifyRequest = asyncHandler(async (req, res) => {
 
   if (action === 'approve') {
     request.verificationStatus = 'verified';
-    request.status = 'pending'; // Move to active matching queue
+    request.status = 'matching'; // will be updated to matched/pending after donor search
     request.verifiedBy = req.user._id;
     request.verifiedAt = new Date();
 
-    // Send notification to requester
+    const approveMessage = `Your blood request for ${request.bloodGroupNeeded} has been verified and is now active. Matching donors will be notified shortly.`;
+
+    // ── In-app notification for requester ─────────────────────────────────
     await Notification.create({
       recipientId: request.requesterId,
       requestId: request._id,
       type: 'request_verified',
-      message: `Your blood request for ${request.bloodGroupNeeded} has been verified and is now active. Matching donors will be notified shortly.`,
+      message: approveMessage,
     });
+
+    // ── FCM push banner for requester ──────────────────────────────────────
+    setImmediate(async () => {
+      try {
+        const requester = await User.findById(request.requesterId).select('fullName fcmToken').lean();
+        if (requester) {
+          await sendPushNotification(
+            requester,
+            '✅ Blood Request Approved',
+            approveMessage,
+            { type: 'request_verified', requestId: request._id.toString() }
+          );
+        }
+      } catch (e) {
+        logger.error('FCM push failed for request approval notification to requester:', e.message);
+      }
+
+      // ── Donor Matching + FCM Push to Donors ────────────────────────────
+      // This is the core: find matching donors and fire FCM phone banners.
+      try {
+        const matchingDonors = await findMatchingDonors(request);
+
+        if (matchingDonors.length > 0) {
+          let notifiedCount = 0;
+
+          for (const donor of matchingDonors) {
+            // sendDonorNotification sends FCM push AND creates in-app notification record
+            const sent = await sendDonorNotification(donor, request);
+            if (sent) notifiedCount++;
+
+            // Track that this donor was notified (for respond endpoint)
+            try {
+              await DonorResponse.create({
+                requestId: request._id,
+                donorId: donor._id,
+                notificationStatus: sent ? 'sent' : 'failed',
+                notificationId: sent ? 'fcm_push' : null,
+              });
+            } catch (err) {
+              if (err.code !== 11000) {
+                logger.error(`Failed to create donor_response for donor ${donor._id}:`, err.message);
+              }
+            }
+          }
+
+          // Update request status to matched
+          await BloodRequest.findByIdAndUpdate(request._id, {
+            status: 'matched',
+            donorsNotified: notifiedCount,
+          });
+
+          logger.info(`Request #${request._id} approved: ${notifiedCount} donors notified via FCM.`);
+        } else {
+          // No donors found — keep as pending so admin can try again later
+          await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
+          logger.warn(`Request #${request._id} approved but no matching donors found.`);
+        }
+      } catch (matchErr) {
+        logger.error(`Donor matching failed for approved request #${request._id}:`, matchErr.message);
+        await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
+      }
+    });
+
   } else {
     request.verificationStatus = 'rejected';
     request.status = 'cancelled';
@@ -181,12 +248,31 @@ const verifyRequest = asyncHandler(async (req, res) => {
     request.verifiedBy = req.user._id;
     request.verifiedAt = new Date();
 
-    // Send notification to requester
+    const rejectMessage = `Your blood request has been rejected. Reason: ${request.rejectionReason}`;
+
+    // In-app inbox record
     await Notification.create({
       recipientId: request.requesterId,
       requestId: request._id,
       type: 'request_rejected',
-      message: `Your blood request has been rejected. Reason: ${request.rejectionReason}`,
+      message: rejectMessage,
+    });
+
+    // FCM push — device banner
+    setImmediate(async () => {
+      try {
+        const requester = await User.findById(request.requesterId).select('fullName fcmToken').lean();
+        if (requester) {
+          await sendPushNotification(
+            requester,
+            '❌ Blood Request Rejected',
+            rejectMessage,
+            { type: 'request_rejected', requestId: request._id.toString() }
+          );
+        }
+      } catch (e) {
+        logger.error('FCM push failed for request rejection:', e.message);
+      }
     });
   }
 

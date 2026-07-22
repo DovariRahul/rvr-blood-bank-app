@@ -1,18 +1,17 @@
 const BloodRequest = require('../models/BloodRequest');
-const User = require('../models/User');
-const Donor = require('../models/Donor');
 const DonorResponse = require('../models/DonorResponse');
-const Notification = require('../models/Notification');
 const { asyncHandler, formatPhoneE164 } = require('../utils/helpers');
 const { NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
-const { findMatchingDonors } = require('../services/matching.service');
-const { sendDonorNotification } = require('../services/fcm.service');
 const { logger } = require('../utils/logger');
 
 /**
  * POST /api/requests
- * Create a new blood request and trigger donor matching.
- * Migrated from MySQL to Mongoose. All business logic preserved.
+ * Create a new blood request.
+ *
+ * NOTE: Donor matching and FCM push notifications are intentionally NOT triggered
+ * here. The request sits at 'pending_verification' until an admin approves it.
+ * The full matching + notification pipeline runs in admin.controller.js →
+ * verifyRequest (approve branch).
  */
 const createRequest = asyncHandler(async (req, res) => {
   const {
@@ -45,131 +44,31 @@ const createRequest = asyncHandler(async (req, res) => {
     contactPhone: formattedPhone,
     additionalNotes: additional_notes || null,
     medicalProofUrl: medical_proof_url || null,
+    // Stays at pending_verification — donors notified ONLY after admin approves.
     status: 'pending_verification',
     expiresAt,
   });
 
-  // Update status to matching
-  request.status = 'matching';
-  await request.save();
-
-  // Trigger matching engine asynchronously
-  setImmediate(async () => {
-    try {
-      const matchingDonors = await findMatchingDonors(request);
-
-      if (matchingDonors.length > 0) {
-        let notifiedCount = 0;
-
-        for (const donor of matchingDonors) {
-          const sent = await sendDonorNotification(donor, request);
-          if (sent) notifiedCount++;
-
-          // Create donor response record
-          try {
-            await DonorResponse.create({
-              requestId: request._id,
-              donorId: donor._id,
-              notificationStatus: sent ? 'sent' : 'failed',
-              notificationId: sent ? 'fcm_push' : null,
-            });
-          } catch (err) {
-            // Ignore duplicate key errors
-            if (err.code !== 11000) {
-              logger.error(`Failed to create donor_response for donor ${donor._id}:`, err.message);
-            }
-          }
-        }
-
-        // Update request with notification count
-        await BloodRequest.findByIdAndUpdate(request._id, {
-          status: 'matched',
-          donorsNotified: notifiedCount,
-        });
-
-        logger.info(`Request #${request._id}: ${notifiedCount} donors notified`);
-      } else {
-        await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
-        logger.warn(`Request #${request._id}: No matching donors found`);
-      }
-    } catch (error) {
-      logger.error(`Matching failed for request #${request._id}:`, error.message);
-      await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
-    }
-
-    // Send in-app notifications to matching users
-    try {
-      const notifMessage = `Someone needs your ${blood_group_needed} blood group blood! A patient requires urgent help — please check the details below.`;
-
-      // Find all matching users (by blood_group on User model and Donor model)
-      const matchingUsers = await User.find({
-        bloodGroup: blood_group_needed,
-        isActive: true,
-        _id: { $ne: req.user._id },
-      }).select('_id');
-
-      const matchingDonorUsers = await Donor.find({
-        bloodGroup: blood_group_needed,
-      })
-        .populate({ path: 'userId', match: { isActive: true, _id: { $ne: req.user._id } }, select: '_id' })
-        .lean();
-
-      // Merge and deduplicate recipient IDs
-      const allIds = new Set([
-        ...matchingUsers.map((u) => u._id.toString()),
-        ...matchingDonorUsers
-          .filter((d) => d.userId)
-          .map((d) => d.userId._id.toString()),
-      ]);
-
-      if (allIds.size > 0) {
-        const notifications = [];
-        for (const uid of allIds) {
-          notifications.push({
-            recipientId: uid,
-            requestId: request._id,
-            type: 'blood_request',
-            message: notifMessage,
-            bloodRequestDetails: {
-              patientName: patient_name,
-              bloodGroup: blood_group_needed,
-              urgency,
-              hospitalName: hospital_name,
-              hospitalAddress: hospital_address,
-              hospitalCity: hospital_city,
-              hospitalState: hospital_state,
-              hospitalPincode: hospital_pincode,
-              contactName: contact_name,
-              contactPhone: contact_phone,
-              additionalNotes: additional_notes || null,
-            },
-          });
-        }
-
-        await Notification.insertMany(notifications);
-        logger.info(`Request #${request._id}: in-app notifications sent to ${allIds.size} users`);
-      }
-    } catch (notifError) {
-      logger.error(`Failed to create in-app notifications for request #${request._id}:`, notifError.message);
-    }
-  });
+  logger.info(`Blood request #${request._id} submitted by user ${req.user._id}. Awaiting admin verification.`);
 
   res.status(201).json({
     success: true,
     data: {
       request: {
         id: request._id,
-        status: 'pending',
+        status: 'pending_verification',
         blood_group_needed,
         units_needed,
         urgency,
         created_at: request.createdAt,
         expires_at: request.expiresAt,
       },
-      message: 'Request submitted. Matching donors will be notified shortly.',
+      message: 'Request submitted. Our team will review it and notify matching donors shortly.',
     },
   });
 });
+
+
 
 /**
  * GET /api/requests/:id

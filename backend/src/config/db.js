@@ -33,7 +33,7 @@ async function connectDB() {
 
     return conn;
   } catch (error) {
-    logger.error('Failed to connect to MongoDB:', error.message);
+    logger.error(`Failed to connect to MongoDB: ${error.message}`);
     process.exit(1);
   }
 }

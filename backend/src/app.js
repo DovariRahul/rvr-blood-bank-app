@@ -28,7 +28,7 @@ app.use(
     origin: process.env.NODE_ENV === 'development' ? true : (process.env.CLIENT_URL || '*'),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'bypass-tunnel-reminder', 'x-localtunnel-bypass', 'ngrok-skip-browser-warning'],
   })
 );
 
@@ -41,9 +41,6 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
 }
 
-// Rate limiting
-app.use('/api/', generalLimiter);
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -53,6 +50,9 @@ app.get('/api/health', (req, res) => {
     database: 'mongodb-atlas',
   });
 });
+
+// Rate limiting
+app.use('/api/', generalLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
