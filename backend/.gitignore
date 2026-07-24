@@ -1,7 +1,20 @@
+# Dependencies
 node_modules/
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Logs and Uploads
 logs/
 uploads/
-firebase-service-account.json
 *.log
+
+# Sensitive credentials & key files
+firebase-service-account.json
+firebase-admin-key.json
+firebase-*.json
+
+# OS files
 .DS_Store

@@ -171,12 +171,27 @@ const verifyRequest = asyncHandler(async (req, res) => {
 
     const approveMessage = `Your blood request for ${request.bloodGroupNeeded} has been verified and is now active. Matching donors will be notified shortly.`;
 
-    // ── In-app notification for requester ─────────────────────────────────
+    // ── In-app notification for requester (with full patient details) ──────
     await Notification.create({
       recipientId: request.requesterId,
       requestId: request._id,
       type: 'request_verified',
       message: approveMessage,
+      // Embed all patient/hospital details so the mobile Notifications tab
+      // can display them instantly without an extra network round-trip.
+      bloodRequestDetails: {
+        patientName:     request.patientName,
+        bloodGroup:      request.bloodGroupNeeded,
+        urgency:         request.urgency,
+        hospitalName:    request.hospitalName,
+        hospitalAddress: request.hospitalAddress,
+        hospitalCity:    request.hospitalCity,
+        hospitalState:   request.hospitalState,
+        hospitalPincode: request.hospitalPincode,
+        contactName:     request.contactName,
+        contactPhone:    request.contactPhone,
+        additionalNotes: request.additionalNotes || null,
+      },
     });
 
     // ── FCM push banner for requester ──────────────────────────────────────
@@ -250,12 +265,25 @@ const verifyRequest = asyncHandler(async (req, res) => {
 
     const rejectMessage = `Your blood request has been rejected. Reason: ${request.rejectionReason}`;
 
-    // In-app inbox record
+    // In-app inbox record (with patient details so user knows which request)
     await Notification.create({
       recipientId: request.requesterId,
       requestId: request._id,
       type: 'request_rejected',
       message: rejectMessage,
+      bloodRequestDetails: {
+        patientName:     request.patientName,
+        bloodGroup:      request.bloodGroupNeeded,
+        urgency:         request.urgency,
+        hospitalName:    request.hospitalName,
+        hospitalAddress: request.hospitalAddress,
+        hospitalCity:    request.hospitalCity,
+        hospitalState:   request.hospitalState,
+        hospitalPincode: request.hospitalPincode,
+        contactName:     request.contactName,
+        contactPhone:    request.contactPhone,
+        additionalNotes: request.additionalNotes || null,
+      },
     });
 
     // FCM push — device banner
