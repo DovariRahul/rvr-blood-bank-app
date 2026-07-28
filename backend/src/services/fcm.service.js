@@ -108,8 +108,16 @@ async function sendPushNotification(user, title, body, data = {}) {
  */
 async function sendDonorNotification(donor, request) {
   const urgencyLabel = request.urgency.toUpperCase();
-  const title = `🚨 ${urgencyLabel} Blood Request: ${request.bloodGroupNeeded}`;
-  const body = `Hi ${donor.userId?.fullName || 'Donor'}, your blood group is needed by someone. Please check the notification section in the RVR Blood Bank app.`;
+  const donorName = donor.userId?.fullName || donor.fullName || 'Donor';
+  const title = `🚨 ${urgencyLabel} Blood Request — ${request.bloodGroupNeeded} Needed`;
+
+  // Full SMS-style message with all details
+  const body =
+    `Hi ${donorName}, someone urgently needs ${request.bloodGroupNeeded} blood!\n` +
+    `📋 Patient: ${request.patientName}\n` +
+    `🏥 Hospital: ${request.hospitalName}, ${request.hospitalCity}\n` +
+    `📞 Contact: ${request.contactName} — ${request.contactPhone}\n` +
+    `Please open the RVR Blood Bank app to Accept or Decline.`;
 
   const data = {
     type: 'blood_request',
@@ -120,7 +128,7 @@ async function sendDonorNotification(donor, request) {
   // The donor object might have populated userId or just a plain object
   const userObj = donor.userId && typeof donor.userId === 'object'
     ? donor.userId
-    : { _id: donor.userId, fcmToken: donor.fcmToken, fullName: donor.fullName };
+    : { _id: donor.userId, fcmToken: donor.fcmToken, fullName: donorName };
 
   const sent = await sendPushNotification(userObj, title, body, data);
 
@@ -146,6 +154,7 @@ async function sendDonorNotification(donor, request) {
 
   return sent;
 }
+
 
 /**
  * Send confirmation to a donor when they accept a request.

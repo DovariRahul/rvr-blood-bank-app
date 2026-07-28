@@ -150,18 +150,18 @@ async function findMatchingDonors(request) {
   const { bloodGroupNeeded, urgency, hospitalCity, hospitalPincode, hospitalLocation } = request;
 
   // Step 1: Determine blood groups to search
-  let bloodGroups = [bloodGroupNeeded];
-  if (urgency === 'critical') {
-    bloodGroups = COMPATIBILITY_MAP[bloodGroupNeeded] || [bloodGroupNeeded];
-  }
+  // Always start with exact match; for critical urgency, also include compatible groups
+  const exactMatch = [bloodGroupNeeded];
+  const compatibleGroups = COMPATIBILITY_MAP[bloodGroupNeeded] || [bloodGroupNeeded];
+  const bloodGroups = urgency === 'critical' ? compatibleGroups : exactMatch;
 
   // Step 2: Get search radius
   const radiusKm = getSearchRadius(urgency);
   const expandedRadius = urgency === 'critical' ? Math.min(radiusKm * 3, 100) : radiusKm;
 
   // Step 3: Get recently over-notified donors (rate limiting)
-  // Raise rateLimitPerDay to 1000 in development so testers aren't blocked after 3 tests
-  const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+  // In development mode, raise limit to 1000 so testers are never blocked
+  const isDev = process.env.NODE_ENV === 'development';
   const rateLimitPerDay = isDev ? 1000 : (parseInt(process.env.SMS_RATE_LIMIT_PER_DAY, 10) || 3);
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -250,33 +250,38 @@ async function findMatchingDonors(request) {
     }
   }
 
-  // Step 5: Fallback — non-geo search by city/pincode
+  // Step 5: Fallback — non-geo search by city/pincode OR entire DB if no city match
   if (donors.length === 0) {
     logger.info('Using city/pincode matching fallback');
 
-    donors = await Donor.find({
+    // Build base eligibility filter (no donation date restriction for new donors)
+    const baseFilter = {
       bloodGroup: { $in: bloodGroups },
       isAvailable: true,
       notificationOptIn: true,
       _id: { $nin: excludedDonorIds },
-      $and: [
-        {
-          $or: [
-            { lastDonationDate: null },
-            { lastDonationDate: { $lte: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000) } },
-          ],
-        },
-        {
-          $or: [
-            { 'address.city': { $regex: new RegExp(`^${hospitalCity}$`, 'i') } },
-            { 'address.pincode': hospitalPincode },
-          ],
-        },
+    };
+
+    // Try city/pincode match first
+    donors = await Donor.find({
+      ...baseFilter,
+      $or: [
+        { 'address.city': { $regex: new RegExp(`^${hospitalCity}$`, 'i') } },
+        { 'address.pincode': hospitalPincode },
       ],
     })
       .populate('userId', 'fullName phone email fcmToken isActive')
       .limit(30)
       .lean();
+
+    // If still no donors, try any city (wider search)
+    if (donors.length === 0) {
+      logger.info('No donors in city — expanding to all registered donors with matching blood group');
+      donors = await Donor.find(baseFilter)
+        .populate('userId', 'fullName phone email fcmToken isActive')
+        .limit(30)
+        .lean();
+    }
 
     // Filter active users and add scores
     donors = donors
