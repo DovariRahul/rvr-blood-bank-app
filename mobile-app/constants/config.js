@@ -96,7 +96,7 @@ const getApiBaseUrl = () => {
     return 'http://10.0.2.2:5000/api'; // Android emulator only
   }
   // Production: EXPO_PUBLIC_API_URL must be set in .env before building the APK.
-  return 'https://checked-number-preston-refresh.trycloudflare.com/api';
+  return 'https://panels-consist-possess-decisions.trycloudflare.com/api';
 };
 
 const Config = {
