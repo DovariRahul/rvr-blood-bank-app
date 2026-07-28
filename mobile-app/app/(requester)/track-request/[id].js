@@ -11,6 +11,7 @@ export default function TrackRequestScreen() {
   const [request, setRequest] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadRequest();
@@ -50,6 +51,36 @@ export default function TrackRequestScreen() {
               Alert.alert('Error', err.response?.data?.message || 'Failed to cancel request.');
             } finally {
               setIsCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Request',
+      'Are you sure you want to permanently delete this blood request? This will remove it from history and notify matching users. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await requestService.deleteRequest(id);
+              Alert.alert('Deleted', 'Your blood request has been deleted.', [
+                {
+                  text: 'OK',
+                  onPress: () => router.replace('/(requester)/history'),
+                },
+              ]);
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.message || 'Failed to delete request.');
+            } finally {
+              setIsDeleting(false);
             }
           },
         },
@@ -132,11 +163,11 @@ export default function TrackRequestScreen() {
       )}
 
       {/* Actions */}
-      {['pending', 'matching', 'matched'].includes(request.status) && (
+      {['pending', 'matching', 'matched', 'pending_verification'].includes(request.status) && (
         <TouchableOpacity 
           style={[styles.cancelBtn, isCancelling && { opacity: 0.6 }]} 
           onPress={handleCancel}
-          disabled={isCancelling}
+          disabled={isCancelling || isDeleting}
         >
           {isCancelling ? (
             <ActivityIndicator color={Colors.primary} />
@@ -145,6 +176,18 @@ export default function TrackRequestScreen() {
           )}
         </TouchableOpacity>
       )}
+
+      <TouchableOpacity 
+        style={[styles.deleteBtn, isDeleting && { opacity: 0.6 }]} 
+        onPress={handleDelete}
+        disabled={isCancelling || isDeleting}
+      >
+        {isDeleting ? (
+          <ActivityIndicator color={Colors.error} />
+        ) : (
+          <Text style={styles.deleteBtnText}>Delete Request</Text>
+        )}
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -257,10 +300,24 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 40,
+    marginBottom: 12,
   },
   cancelBtnText: {
     color: Colors.primary,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  deleteBtn: {
+    borderColor: Colors.error,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 40,
+  },
+  deleteBtnText: {
+    color: Colors.error,
     fontSize: 16,
     fontWeight: 'bold',
   },

@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Donor = require('../models/Donor');
 const DonorResponse = require('../models/DonorResponse');
 const BloodRequest = require('../models/BloodRequest');
+const Notification = require('../models/Notification');
 const { asyncHandler, formatPhoneE164, calculateAge, daysSince } = require('../utils/helpers');
 const { ConflictError, NotFoundError, ForbiddenError, AppError } = require('../utils/errors');
 const { sendAcceptanceConfirmation, sendSeekerNotification, createInAppNotification } = require('../services/fcm.service');
@@ -267,13 +268,19 @@ const respondToRequest = asyncHandler(async (req, res) => {
   if (!donor) throw new NotFoundError('Donor profile');
 
   // Get the donor_response record
-  const donorResponse = await DonorResponse.findOne({
+  let donorResponse = await DonorResponse.findOne({
     requestId: id,
     donorId: donor._id,
   });
 
   if (!donorResponse) {
-    throw new NotFoundError('You were not notified for this request.');
+    // Create it dynamically if missing to ensure donors can respond
+    donorResponse = new DonorResponse({
+      requestId: id,
+      donorId: donor._id,
+      response: 'no_response',
+      notificationStatus: 'delivered',
+    });
   }
 
   if (donorResponse.response !== 'no_response') {
@@ -284,6 +291,13 @@ const respondToRequest = asyncHandler(async (req, res) => {
   donorResponse.response = response;
   donorResponse.responseTime = new Date();
   await donorResponse.save();
+
+  // Delete the matching in-app notification from the donor's inbox
+  await Notification.deleteOne({
+    recipientId: req.user._id,
+    requestId: id,
+    type: 'blood_request',
+  });
 
   // If accepted, update request and send confirmations
   if (response === 'accepted') {
@@ -300,23 +314,29 @@ const respondToRequest = asyncHandler(async (req, res) => {
 
         // ── FCM push to donor: thank-you banner ──────────────────────────────
         await sendAcceptanceConfirmation(donor, request);
-        // ── In-app record for donor inbox ────────────────────────────────────
-        const donorUserId = donor.userId?._id || donor.userId;
-        await createInAppNotification(
-          donorUserId,
-          'donor_accepted',
-          `Thank you for accepting! Please proceed to ${request.hospitalName}. Contact: ${request.contactName} at ${request.contactPhone}.`,
-          request._id
-        );
 
         // ── FCM push to requester: donor found ───────────────────────────────
         await sendSeekerNotification(request, donor);
         // ── In-app record for requester inbox ────────────────────────────────
+        const details = {
+          patientName: request.patientName,
+          bloodGroup: request.bloodGroupNeeded,
+          urgency: request.urgency,
+          hospitalName: request.hospitalName,
+          hospitalAddress: request.hospitalAddress,
+          hospitalCity: request.hospitalCity,
+          hospitalState: request.hospitalState,
+          hospitalPincode: request.hospitalPincode,
+          contactName: request.contactName,
+          contactPhone: request.contactPhone,
+          additionalNotes: request.additionalNotes || null,
+        };
         await createInAppNotification(
           request.requesterId,
           'donor_accepted',
           `Great news! ${donorName} (${donor.bloodGroup}) has accepted your blood request and is on their way to ${request.hospitalName}.`,
-          request._id
+          request._id,
+          details
         );
       } catch (err) {
         logger.error('Failed to send confirmation notifications:', err.message);

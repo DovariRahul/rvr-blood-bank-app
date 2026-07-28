@@ -253,23 +253,7 @@ export default function PublicHomeScreen() {
           </View>
         </View>
 
-        {/* Blood Group Availability */}
-        <View style={styles.availabilitySection}>
-          <View style={styles.sectionInner}>
-            <Text style={styles.sectionHeading}>Blood Group Availability</Text>
-            <Text style={styles.sectionSub}>Current available donors by blood group</Text>
 
-            <View style={styles.bloodGridContainer}>
-              {Object.keys(groupCounts).map((group) => (
-                <TouchableOpacity key={group} style={[styles.bloodBoxCard, isTabletOrWeb && { width: '23.5%' }]} onPress={() => handleGroupClick(group)}>
-                  <Ionicons name="water" size={24} color={Colors.error} style={{ marginBottom: 8 }} />
-                  <Text style={styles.bloodBoxName}>{group}</Text>
-                  <Text style={styles.bloodBoxCountText}>{groupCounts[group]} donors available</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
 
         {/* Features Row */}
         <View style={styles.featuresSection}>

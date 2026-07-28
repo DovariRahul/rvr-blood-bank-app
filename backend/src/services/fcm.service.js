@@ -14,13 +14,14 @@ const { logger } = require('../utils/logger');
  * @param {string}          message    - Human-readable notification body
  * @param {string|ObjectId} [requestId] - Related BloodRequest._id (optional)
  */
-async function createInAppNotification(userId, type, message, requestId = null) {
+async function createInAppNotification(userId, type, message, requestId = null, bloodRequestDetails = null) {
   try {
     await Notification.create({
       recipientId: userId,
       requestId: requestId || null,
       type,
       message,
+      bloodRequestDetails,
     });
   } catch (err) {
     // Non-fatal — log but don't throw so the push still completes
@@ -108,7 +109,7 @@ async function sendPushNotification(user, title, body, data = {}) {
 async function sendDonorNotification(donor, request) {
   const urgencyLabel = request.urgency.toUpperCase();
   const title = `🚨 ${urgencyLabel} Blood Request: ${request.bloodGroupNeeded}`;
-  const body = `Hi ${donor.userId?.fullName || 'Donor'}, an urgent request for ${request.bloodGroupNeeded} blood at ${request.hospitalName} (${request.hospitalCity}) needs your help. Tap to view and respond!`;
+  const body = `Hi ${donor.userId?.fullName || 'Donor'}, your blood group is needed by someone. Please check the notification section in the RVR Blood Bank app.`;
 
   const data = {
     type: 'blood_request',
@@ -127,7 +128,21 @@ async function sendDonorNotification(donor, request) {
   // This guarantees the Notifications tab always shows the request,
   // even if FCM delivery fails or the device is offline.
   const recipientId = userObj._id || userObj.id;
-  await createInAppNotification(recipientId, 'blood_request', body, request._id || request.id);
+  const details = {
+    patientName: request.patientName,
+    bloodGroup: request.bloodGroupNeeded,
+    urgency: request.urgency,
+    hospitalName: request.hospitalName,
+    hospitalAddress: request.hospitalAddress,
+    hospitalCity: request.hospitalCity,
+    hospitalState: request.hospitalState,
+    hospitalPincode: request.hospitalPincode,
+    contactName: request.contactName,
+    contactPhone: request.contactPhone,
+    additionalNotes: request.additionalNotes || null,
+  };
+
+  await createInAppNotification(recipientId, 'blood_request', body, request._id || request.id, details);
 
   return sent;
 }

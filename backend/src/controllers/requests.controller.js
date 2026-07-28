@@ -230,4 +230,37 @@ const cancelRequest = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createRequest, getRequest, getRequests, updateRequestStatus, cancelRequest };
+/**
+ * DELETE /api/requests/:id
+ * Delete a blood request.
+ */
+const deleteRequest = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const request = await BloodRequest.findById(id);
+  if (!request) throw new NotFoundError('Request');
+
+  // Only owner or admin can delete
+  if (req.user.role !== 'admin' && request.requesterId.toString() !== req.user._id.toString()) {
+    throw new ForbiddenError('You can only delete your own requests.');
+  }
+
+  // Delete matching notifications
+  const Notification = require('../models/Notification');
+  await Notification.deleteMany({ requestId: id });
+
+  // Delete matching donor responses
+  await DonorResponse.deleteMany({ requestId: id });
+
+  // Delete request
+  await BloodRequest.findByIdAndDelete(id);
+
+  logger.info(`Request #${id} deleted by user #${req.user._id}`);
+
+  res.json({
+    success: true,
+    message: 'Request deleted successfully.',
+  });
+});
+
+module.exports = { createRequest, getRequest, getRequests, updateRequestStatus, cancelRequest, deleteRequest };

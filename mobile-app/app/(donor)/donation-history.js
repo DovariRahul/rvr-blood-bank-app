@@ -15,7 +15,10 @@ export default function DonationHistoryScreen() {
   const loadHistory = async () => {
     try {
       const res = await donorService.getMyProfile();
-      setHistory(res.data.response_history || []);
+      const acceptedHistory = (res.data.response_history || []).filter(
+        (item) => item.response === 'accepted'
+      );
+      setHistory(acceptedHistory);
     } catch (err) {
       Alert.alert('Error', 'Failed to load history.');
     } finally {

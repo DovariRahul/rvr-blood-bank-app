@@ -24,6 +24,11 @@ const requestService = {
     return res.data;
   },
 
+  async deleteRequest(id) {
+    const res = await api.delete(`/requests/${id}`);
+    return res.data;
+  },
+
   async updateStatus(id, status) {
     const res = await api.patch(`/requests/${id}/status`, { status });
     return res.data;

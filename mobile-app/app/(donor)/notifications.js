@@ -65,7 +65,7 @@ export default function DonorNotificationsScreen() {
     }
   };
 
-  const handleRespond = async (requestId, notifId, response) => {
+  const handleRespond = async (requestId, notifId, response, details = {}) => {
     if (respondingId) return;
     try {
       setRespondingId(requestId);
@@ -74,8 +74,20 @@ export default function DonorNotificationsScreen() {
       await notificationService.markAsRead(notifId);
 
       if (response === 'accepted') {
-        dispatch(setToastMessage('Thank you! You have accepted the blood request.'));
-        router.push('/(donor)/home');
+        Alert.alert(
+          'Thank you for donating! ❤️',
+          `Your response has been registered. Please proceed to:\n\n🏥 ${details.hospitalName || 'the hospital'}\n📞 Contact: ${details.contactName || 'Staff'} (${details.contactPhone || ''})\n\nThis request is now added to your Donation History.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                dispatch(fetchNotifications());
+                dispatch(fetchUnreadCount());
+                router.push('/(donor)/home');
+              },
+            },
+          ]
+        );
       } else {
         dispatch(setToastMessage('Blood request declined.'));
         // Re-fetch from Redux to remove the declined notification from the list
@@ -172,14 +184,14 @@ export default function DonorNotificationsScreen() {
           <View style={styles.btnRow}>
             <TouchableOpacity
               style={styles.declineBtn}
-              onPress={() => handleRespond(item.requestId, item._id, 'declined')}
+              onPress={() => handleRespond(item.requestId, item._id, 'declined', details)}
               disabled={!!respondingId}
             >
               <Text style={styles.declineText}>Decline</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.acceptBtn, { backgroundColor: urgencyColor }]}
-              onPress={() => handleRespond(item.requestId, item._id, 'accepted')}
+              onPress={() => handleRespond(item.requestId, item._id, 'accepted', details)}
               disabled={!!respondingId}
             >
               {respondingId === item.requestId ? (

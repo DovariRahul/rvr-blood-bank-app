@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native & Credentials (except google-services.json so EAS can build it)
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+# google-services.json   <-- Commented out so EAS CLI uploads it
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS & System
+.DS_Store
+*.pem
+
+# Environment files (except .env so EAS CLI can bake variables in)
+# .env                   <-- Commented out so EAS CLI uploads it
+.env.production
+.env.development
+.env.staging
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android

@@ -213,14 +213,18 @@ const verifyRequest = asyncHandler(async (req, res) => {
       // ── Donor Matching + FCM Push to Donors ────────────────────────────
       // This is the core: find matching donors and fire FCM phone banners.
       try {
+        logger.info(`Starting donor matching for request #${request._id} (blood: ${request.bloodGroupNeeded}, city: ${request.hospitalCity})`);
         const matchingDonors = await findMatchingDonors(request);
+        logger.info(`findMatchingDonors returned ${matchingDonors.length} donors for request #${request._id}`);
 
         if (matchingDonors.length > 0) {
           let notifiedCount = 0;
 
           for (const donor of matchingDonors) {
+            logger.info(`Notifying donor ${donor._id} (userId: ${donor.userId?._id || donor.userId}, blood: ${donor.bloodGroup}, name: ${donor.fullName})`);
             // sendDonorNotification sends FCM push AND creates in-app notification record
             const sent = await sendDonorNotification(donor, request);
+            logger.info(`sendDonorNotification result for donor ${donor._id}: ${sent ? 'SUCCESS' : 'FAILED (no FCM token)'}`);
             if (sent) notifiedCount++;
 
             // Track that this donor was notified (for respond endpoint)
@@ -248,10 +252,11 @@ const verifyRequest = asyncHandler(async (req, res) => {
         } else {
           // No donors found — keep as pending so admin can try again later
           await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
-          logger.warn(`Request #${request._id} approved but no matching donors found.`);
+          logger.warn(`Request #${request._id} approved but NO matching donors found. Check: 1) Are there donors with matching blood group? 2) Are donors available & opted-in? 3) Does the city/pincode match?`);
         }
       } catch (matchErr) {
         logger.error(`Donor matching failed for approved request #${request._id}:`, matchErr.message);
+        logger.error(matchErr.stack);
         await BloodRequest.findByIdAndUpdate(request._id, { status: 'pending' });
       }
     });

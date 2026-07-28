@@ -160,7 +160,9 @@ async function findMatchingDonors(request) {
   const expandedRadius = urgency === 'critical' ? Math.min(radiusKm * 3, 100) : radiusKm;
 
   // Step 3: Get recently over-notified donors (rate limiting)
-  const rateLimitPerDay = parseInt(process.env.SMS_RATE_LIMIT_PER_DAY, 10) || 3;
+  // Raise rateLimitPerDay to 1000 in development so testers aren't blocked after 3 tests
+  const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+  const rateLimitPerDay = isDev ? 1000 : (parseInt(process.env.SMS_RATE_LIMIT_PER_DAY, 10) || 3);
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const overNotifiedDonors = await DonorResponse.aggregate([
@@ -227,7 +229,15 @@ async function findMatchingDonors(request) {
           distanceKm: Math.round(distanceKm * 10) / 10,
           score: score.totalScore,
           scoreBreakdown: score.breakdown,
-          // Flatten user info for compatibility
+          // Reconstruct userId as a populated-like object so
+          // sendDonorNotification can resolve _id and fcmToken correctly.
+          userId: {
+            _id: donor.user._id,
+            fullName: donor.user.fullName,
+            phone: donor.user.phone,
+            email: donor.user.email,
+            fcmToken: donor.user.fcmToken,
+          },
           fullName: donor.user.fullName,
           phone: donor.user.phone,
           email: donor.user.email,
@@ -249,13 +259,19 @@ async function findMatchingDonors(request) {
       isAvailable: true,
       notificationOptIn: true,
       _id: { $nin: excludedDonorIds },
-      $or: [
-        { lastDonationDate: null },
-        { lastDonationDate: { $lte: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000) } },
-      ],
-      $or: [
-        { 'address.city': { $regex: new RegExp(`^${hospitalCity}$`, 'i') } },
-        { 'address.pincode': hospitalPincode },
+      $and: [
+        {
+          $or: [
+            { lastDonationDate: null },
+            { lastDonationDate: { $lte: new Date(Date.now() - 56 * 24 * 60 * 60 * 1000) } },
+          ],
+        },
+        {
+          $or: [
+            { 'address.city': { $regex: new RegExp(`^${hospitalCity}$`, 'i') } },
+            { 'address.pincode': hospitalPincode },
+          ],
+        },
       ],
     })
       .populate('userId', 'fullName phone email fcmToken isActive')

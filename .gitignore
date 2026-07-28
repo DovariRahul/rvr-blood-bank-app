@@ -9,7 +9,7 @@ node_modules/
 
 # Sensitive keys and credentials
 firebase-*.json
-google-services.json
+
 *.pem
 *.jks
 *.p8
